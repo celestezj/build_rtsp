@@ -252,11 +252,45 @@ netsh advfirewall firewall delete rule name=all protocol=TCP localport=8080
 > `delete rule name=` 要求名称完全一致；`delete rule name=all protocol=... localport=...` 则按端口兜底删除。
 > 删除是永久的；正在连接的会话不受影响，仅新连接被拦。
 
-**更稳的做法——只对局域网网段开放**（例，仅 `192.168.0.x` 可访问）：
+**更稳的做法——只对局域网网段开放**（推荐用这个，别对全网段放行）。
+
+把下面每条命令的 `192.168.0.0/24` 换成你自己的网段（`ipconfig` 里 IPv4 的前三段 + `.0/24`，例如 `192.168.0.103` → `192.168.0.0/24`）。这样**只有该网段的机器能访问**，其他网段和外网一律拦掉。
+
+**放行（完整清单，覆盖全部端口的 TCP/UDP 与远程网段）：**
 ```cmd
-netsh advfirewall firewall add rule name="WebRTC-IN-LAN" dir=in action=allow protocol=TCP localport=8889 remoteip=192.168.0.0/24 enable=yes
-netsh advfirewall firewall add rule name="WebRTC-UDP-LAN" dir=in action=allow protocol=UDP localport=8189 remoteip=192.168.0.0/24 enable=yes
+REM RTSP 流
+netsh advfirewall firewall add rule name="LAN-RTSP-8554" dir=in action=allow protocol=TCP localport=8554 remoteip=192.168.0.0/24 enable=yes
+
+REM SRT 流
+netsh advfirewall firewall add rule name="LAN-SRT-8890" dir=in action=allow protocol=UDP localport=8890 remoteip=192.168.0.0/24 enable=yes
+
+REM WebRTC 信令 (TCP)
+netsh advfirewall firewall add rule name="LAN-WebRTC-SIG-8889" dir=in action=allow protocol=TCP localport=8889 remoteip=192.168.0.0/24 enable=yes
+
+REM WebRTC 媒体 (UDP)
+netsh advfirewall firewall add rule name="LAN-WebRTC-MEDIA-8189" dir=in action=allow protocol=UDP localport=8189 remoteip=192.168.0.0/24 enable=yes
+
+REM WebRTC 静态播放页
+netsh advfirewall firewall add rule name="LAN-WEB-8080" dir=in action=allow protocol=TCP localport=8080 remoteip=192.168.0.0/24 enable=yes
 ```
+
+> 除非你确实用 RTSP 的 UDP 媒体（VLC 走 TCP 时用不到 8554 已够），否则 8000/8001 一般不必放行——本清单**刻意不含**它们，减少暴露面。
+
+**关闭（删除）——与放行**按规则名一一对应**，安全精确，不会误删同一端口的其他规则**：
+```cmd
+netsh advfirewall firewall delete rule name="LAN-RTSP-8554"
+netsh advfirewall firewall delete rule name="LAN-SRT-8890"
+netsh advfirewall firewall delete rule name="LAN-WebRTC-SIG-8889"
+netsh advfirewall firewall delete rule name="LAN-WebRTC-MEDIA-8189"
+netsh advfirewall firewall delete rule name="LAN-WEB-8080"
+```
+
+**先查后删（确认规则是否存在、方向/协议/网段是否正确）：**
+```cmd
+netsh advfirewall firewall show rule name="LAN-WebRTC-SIG-8889"
+```
+
+> 精确安全删除的要点：**用 `delete rule name="..."` 且名字必须与放行时完全一致**（含引号、大小写），它只删这一条，绝不动别的。若想整网段一次性清空某端口的所有规则，退回用 `delete rule name=all protocol=TCP localport=8889`——但那种会连该端口上其他用途的规则一起删，非必要别用。
 
 ### 4.4 进一步加固（可选）
 
