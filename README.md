@@ -36,9 +36,10 @@
 build_rtsp/
 ├── mediamtx.exe       # RTSP 服务器主程序
 ├── mediamtx.yml       # 服务器配置（含摄像头自动推流）
-├── start_rtsp.bat     # 一键启动服务器
-├── stop_rtsp.bat      # 一键停止
+├── start_rtsp.bat     # 一键启动主服务(mediamtx,自动带出 ffmpeg)
+├── stop_rtsp.bat      # 一键停止主服务(mediamtx + ffmpeg)
 ├── start_web_player.bat # 启动 node 静态服务(8080)，提供 player.html
+├── stop_web_player.bat  # 按 8080 端口精确停止 serve.js(不误伤其他 node)
 ├── serve.js           # 极简静态文件服务器(零依赖)
 ├── player.html        # WebRTC 浏览器播放器(经 http://IP:8080/player.html 访问)
 ├── play_srt.bat       # SRT 低延迟播放（另台电脑的 VLC 用）
@@ -50,10 +51,28 @@ build_rtsp/
 
 ### 日常使用
 
-**启动**：双击 `start_rtsp.bat`，或命令行 `mediamtx.exe`。
-启动后自动拉起 FFmpeg 推流；出现日志 `[path live] stream is available and online` 即为成功。
+**启停关系（先了解架构再操作）**：服务分两个**独立**部分，按需启动/停止——
+- **主服务** = `mediamtx.exe`（RTSP/SRT/WebRTC 服务端），它启动时会**自动再拉起** `ffmpeg.exe`（采集推流子进程，**无需手动启动**）。由 `start_rtsp.bat` / `stop_rtsp.bat` 管理。
+- **WebRTC 静态服务** = `node serve.js`（8080 播放页），**只有**要用浏览器 WebRTC 看时才需要。由 `start_web_player.bat` / `stop_web_player.bat` 管理。
 
-**停止**：双击 `stop_rtsp.bat`（结束 mediamtx 与 ffmpeg 进程）。
+**启动**：
+```cmd
+REM 只用 VLC 看(RTSP/SRT) → 只开主服务即可
+start_rtsp.bat
+
+REM 还要浏览器 WebRTC 看 → 再另开一个窗口启动静态服务
+start_web_player.bat
+```
+启动后出现日志 `[path live] stream is available and online` 即为推流成功。
+
+**停止**：
+```cmd
+REM 停主服务(mediamtx + ffmpeg)
+stop_rtsp.bat
+
+REM 若开过 WebRTC 静态服务，另停它(按 8080 端口精确结束,不误伤其他 node)
+stop_web_player.bat
+```
 
 **本机自测**（无需 VLC）：
 ```cmd
