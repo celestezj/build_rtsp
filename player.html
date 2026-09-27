@@ -26,7 +26,9 @@
 <video id="video" autoplay muted playsinline></video>
 <p class="tip">
   上方的 WHEP 地址是 MediaMTX 的 WebRTC 端点。IP 变了就改 `192.168.0.103` 为新的服务器 IP。<br>
-  直接把本文件发给任意电脑，用浏览器打开即可观看（无需安装任何软件）。首次连接需 1~2 秒。
+  <b>重要：不要在浏览器里双击/直接打开这个文件（file:// 会因 CORS 失败连不上）。</b><br>
+  正确做法：在另一台电脑的浏览器打开 <b>http://192.168.0.103:8080/player.html</b>（Mediamtx 服务器的
+  start_web_player.bat 提供了这个页面）。首次连接需 1~2 秒。
 </p>
 <script>
 const urlInput = document.getElementById('url');

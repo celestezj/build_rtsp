@@ -35,7 +35,9 @@ build_rtsp/
 ├── mediamtx.yml       # 服务器配置（含摄像头自动推流）
 ├── start_rtsp.bat     # 一键启动服务器
 ├── stop_rtsp.bat      # 一键停止
-├── player.html        # WebRTC 浏览器播放器（发给观看端直接用）
+├── start_web_player.bat # 启动 node 静态服务(8080)，提供 player.html
+├── serve.js           # 极简静态文件服务器(零依赖)
+├── player.html        # WebRTC 浏览器播放器(经 http://IP:8080/player.html 访问)
 ├── play_srt.bat       # SRT 低延迟播放（另台电脑的 VLC 用）
 ├── LICENSE
 └── .gitignore
@@ -172,11 +174,20 @@ srt://192.168.0.103:8890?mode=caller&streamid=read:live&latency=120000
 也可直接双击本目录 `play_srt.bat`（会自动带好参数打开 VLC；IP 变了要改脚本里的地址）。
 
 ### WebRTC（浏览器播放，延迟最低）
-VLC 不支持 WebRTC，需用浏览器。把项目里的 **`player.html`** 发到任意电脑，**双击用浏览器打开**即可观看（无需安装任何软件）。页面里默认的 WHEP 地址是：
-```
-http://192.168.0.103:8889/live/whep
-```
-IP 变了在页面上改一下再点播放。首次出画面需 1~2 秒。
+VLC 不支持 WebRTC，需用浏览器。**不要用 file:// 直接双击打开 player.html**（CORS 会拦截导致连不上），而是用 HTTP 方式访问（需要 node 环境，本机已具备）：
+
+1. 服务器端先启动静态服务：双击 **`start_web_player.bat`**（用 node 在 8080 端口提供 `player.html`）
+2. 另台电脑浏览器打开：
+   ```
+   http://192.168.0.103:8080/player.html
+   ```
+3. 页面里默认 WHEP 地址 `http://192.168.0.103:8889/live/whep`，IP 变了改一下再点播放。首次出画面需 1~2 秒。
+
+> **为何不能 file:// 打开**：浏览器用 `file://` 打开时请求来源是 `null`，需服务器的
+> `apiAllowOrigins` 放行，而 MediaMTX 对 `null` 来源不回发 CORS 头，浏览器会报
+> "Failed to fetch"。用 `http://` 访问后来源变成真实 http，配合 `apiAllowOrigins: ["*"]` 即可通。
+
+> 浏览器要求 H.264 流为 **4:2:0 采样 + Baseline 基线**（浏览器解码器不支持 4:2:2 / High profile），已在推流命令里用 `-pix_fmt yuv420p -profile:v baseline` 强制处理，三协议通用。
 
 > 浏览器要求 H.264 流为 **4:2:0 采样 + Baseline 基线**（浏览器解码器不支持 4:2:2 / High profile），已在推流命令里用 `-pix_fmt yuv420p -profile:v baseline` 强制处理，三协议通用。
 

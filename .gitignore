@@ -1,5 +1,6 @@
 # 运行时产物
 server.log
+serve.log
 
 # MediaMTX 自动生成的证书（含私钥，不入库）
 auto.crt
