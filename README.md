@@ -26,9 +26,11 @@
 | 摄像头设备名 | `Integrated Camera`（1920×1080 @30fps） |
 | RTSP 服务 | MediaMTX v1.21.1，端口 **8554** |
 | 流路径 | `/live` |
-| 本机局域网 IP（示例） | `192.168.0.103`（重启后可能变，运行时以 `ipconfig` 为准） |
+| 服务器本地 IP（示例） | `192.168.0.103`（重启后可能变，运行时以 `ipconfig` 为准） |
 | 推流地址 | `rtsp://localhost:8554/live` |
 | 远程拉流地址 | `rtsp://192.168.0.103:8554/live` |
+
+> **`192.168.0.103` 是什么**：是运行 `start_rtsp.bat`（即"摄像头+服务器"所在**这台电脑**）自己的局域网 IPv4，**不是**播放端/其他电脑的地址。文档里所有出现 `192.168.0.103` 或 `<IP>` 的地方，都指这个**服务器本机 IP**，由服务器上 `ipconfig` 查得（常见 `192.168.0.x` / `192.168.1.x`）。其他电脑拉流时把它替换成该值即可。
 
 ### 目录结构
 
@@ -42,7 +44,6 @@ build_rtsp/
 ├── stop_web_player.bat  # 按 8080 端口精确停止 serve.js(不误伤其他 node)
 ├── serve.js           # 极简静态文件服务器(零依赖)
 ├── player.html        # WebRTC 浏览器播放器(经 http://IP:8080/player.html 访问)
-├── play_srt.bat       # SRT 低延迟播放（另台电脑的 VLC 用）
 ├── firewall_lan_open.bat  # 一键放行局域网网段的全部端口(自动提权)
 ├── firewall_lan_close.bat # 一键精确删除上述规则(按规则名,安全)
 ├── LICENSE
@@ -57,7 +58,7 @@ build_rtsp/
 
 **启动**：
 ```cmd
-REM 只用 VLC 看(RTSP/SRT) → 只开主服务即可
+REM 用 RTSP 看（另台电脑 ffplay/VLC）→ 只开主服务即可
 start_rtsp.bat
 
 REM 还要浏览器 WebRTC 看 → 再另开一个窗口启动静态服务
@@ -74,15 +75,16 @@ REM 若开过 WebRTC 静态服务，另停它(按 8080 端口精确结束,不误
 stop_web_player.bat
 ```
 
-**本机自测**（无需 VLC）：
+**本机自测（低延迟命令，推荐）**：
 ```cmd
-ffplay rtsp://localhost:8554/live
+ffplay -fflags nobuffer -flags low_delay -probesize 32 -analyzeduration 0 -framedrop -rtsp_transport tcp -i "rtsp://localhost:8554/live"
 ```
 
-**其他电脑拉流**：VLC → 媒体 → 打开网络串流，输入
+**其他电脑拉流（推荐 ffplay，比 VLC 延迟低不少）**：把 `localhost` 换成服务器局域网 IP
+```cmd
+ffplay -fflags nobuffer -flags low_delay -probesize 32 -analyzeduration 0 -framedrop -rtsp_transport tcp -i "rtsp://192.168.0.103:8554/live"
 ```
-rtsp://192.168.0.103:8554/live
-```
+参数作用：`-fflags nobuffer`+`-flags low_delay` 关缓冲、走低延迟；`-probesize 32`/`-analyzeduration 0` 不做长探测；`-framedrop` 跟不上就丢帧不积压；`-rtsp_transport tcp` 局域网取 TCP。如需更极限可改 `udp`（更低但 1080p 可能丢帧）。
 
 ---
 
@@ -168,9 +170,9 @@ ipconfig
 
 ### 8. 在其他电脑验证拉流
 
-确保拉流电脑与服务器**同一局域网**（同一路由器/Wi-Fi）。VLC → 打开网络串流：
+确保拉流电脑与服务器**同一局域网**（同一路由器/Wi-Fi）。ffplay 打开（低延迟命令，把 IP 换成服务器 IP）：
 ```
-rtsp://<服务器IP>:8554/live
+ffplay -fflags nobuffer -flags low_delay -probesize 32 -analyzeduration 0 -framedrop -rtsp_transport tcp -i "rtsp://<服务器IP>:8554/live"
 ```
 能出画面即打通。
 
@@ -182,22 +184,23 @@ rtsp://<服务器IP>:8554/live
 
 | 协议 | 地址 | 播放方式 | 延迟 |
 |------|------|----------|------|
-| **RTSP** | `rtsp://<IP>:8554/live` | VLC | 高（需调 VLC 缓存） |
-| **SRT** | `srt://<IP>:8890?mode=caller&streamid=read:live&latency=120000` | VLC | 中（UDP，实时性好） |
+| **RTSP** | `rtsp://<IP>:8554/live` | VLC / ffplay | **中（稳定，局域网首选）** |
+| **SRT** | `srt://<IP>:8890?mode=caller&streamid=read:live&latency=500000` | **ffplay / MPV**（别用 VLC） | 较高（重传窗口下限 ~500ms，局域网反而不如 RTSP） |
 | **WebRTC** | `http://<IP>:8889/live/whep`（WHEP 端点） | 浏览器 | **低（~100ms）** |
 
-### SRT（VLC 播放，延迟中等）
-另一台电脑的 VLC → 打开网络串流，填：
+### SRT（ffplay/MPV 播放，延迟较高，局域网不推荐）
+**⚠ 不要用 VLC 测 SRT**：VLC 的 SRT 实现有缺陷，实测表现为"等几十秒才出画面、出一帧后卡死、周期性地动几秒又卡死"。同样这条流用 ffplay/MPV 完全正常——已确认服务器侧 SRT 链路本身健康，问题在 VLC。
+
+另台电脑用 **ffplay**（ffmpeg 自带，装了 ffmpeg 就有）播放：
 ```
-srt://192.168.0.103:8890?mode=caller&streamid=read:live&latency=120000
+ffplay -infbuf -fflags nobuffer -probesize 32 -analyzeduration 0 -framedrop -i "srt://192.168.0.103:8890?mode=caller&streamid=read:live&latency=500000"
 ```
 - `mode=caller`：本端作为发起方连服务器的 SRT 监听端口 8890
 - `streamid=read:live`：告诉服务器"我来读 `live` 这条流"
-- `latency=120000`：SRT 延迟设为 120ms（默认较大）。局域网可再调小，越大越抗网络抖动、越多延迟
+- `latency=500000`：SRT 接收窗口 500ms，是**重传窗口下限**——SRT 靠它做丢包重传，**压不掉**，所以局域网里 SRT 反而比 RTSP 慢
+- `-infbuf -fflags nobuffer -probesize 32 -analyzeduration 0 -framedrop`：关闭缓冲/长时间探测、跟不上就丢帧，强制实时（**不加这些 ffplay 默认会攒几秒缓冲，延迟会飙到好几秒**）
 
-也可用本目录的 **`play_srt.bat`** 一键打开 VLC：
-- 直接双击 → 用默认 IP `192.168.0.103`
-- 传 IP 参数 → `play_srt.bat 192.168.1.50`（服务器 IP 变了就用这个，不用改脚本）
+> **SRT 在局域网价值很小**：它专为"跨不可靠公网、丢包还能靠重传保住画面"设计，代价就是这个重传窗口。干净的局域网几乎不丢包，等于白付这 ~500ms 成本。**局域网低延迟请用 RTSP / WebRTC**；SRT 只在需要跨公网/跨运营商拉流时才有意义。
 
 ### WebRTC（浏览器播放，延迟最低）
 VLC 不支持 WebRTC，需用浏览器。**不要用 file:// 直接双击打开 player.html**（CORS 会拦截导致连不上），而是用 HTTP 方式访问（需要 node 环境，本机已具备）：
@@ -227,7 +230,7 @@ VLC 不支持 WebRTC，需用浏览器。**不要用 file:// 直接双击打开 
 |------|------|------|:---:|
 | **8554** | TCP | RTSP 流（VLC/ffplay 拉流） | 明文 |
 | **8000 / 8001** | UDP | RTSP 的 RTP/RTCP 媒体（一般用不到，走 8554 TCP 为主） | 明文 |
-| **8890** | UDP | SRT 流（VLC 低延迟拉流） | SRT 可加密，默认 off |
+| **8890** | UDP | SRT 流（局域网不如 RTSP，跨公网才用） | SRT 可加密，默认 off |
 | **8889** | TCP | WebRTC **信令**（WHEP 协商，只交换参数） | 明文参数 |
 | **8080** | TCP | 静态播放页 `player.html`（node serve.js） | 明文 |
 | 8892/8893 | TCP/UDP | MoQ 协议（本项目未用） | — |
@@ -278,6 +281,8 @@ netsh advfirewall firewall delete rule name=all protocol=TCP localport=8080
 **更稳的做法——只对局域网网段开放**（推荐用这个，别对全网段放行）。
 
 把下面每条命令的 `192.168.0.0/24` 换成你自己的网段（`ipconfig` 里 IPv4 的前三段 + `.0/24`，例如 `192.168.0.103` → `192.168.0.0/24`）。这样**只有该网段的机器能访问**，其他网段和外网一律拦掉。
+
+> **⚠ 这个网段和上面那个服务器 IP 是一套的，必须联动**：`192.168.0.0/24` 由服务器本机 IP（`192.168.0.103`）取前三段得出，二者同源。**一旦局域网网段变了**（比如服务器 IP 变到 `192.168.1.x`），放行网段就要**同步改成 `192.168.1.0/24`**——否则旧规则放行的是原网段，新网段的机器仍连不上。改法：先 `firewall_lan_close.bat`（或按名删旧规则），再改 `firewall_lan_open.bat` 顶部的 `SUBNET=192.168.1.0/24` 后重新放行。
 
 **放行（完整清单，覆盖全部端口的 TCP/UDP 与远程网段）：**
 ```cmd
@@ -356,7 +361,7 @@ netsh advfirewall firewall show rule name=all | findstr /i "LAN- MTX- WebRTC- Pl
 ### 4.5 进一步加固（可选）
 
 - 若需**从公网**访问：先给 MediaMTX 配置路径鉴权（`paths.live.readUser/readPass`），再考虑端口转发，否则不要暴露公网。
-- 平时若只用 VLC（RTSP/SRT），可不放行 8889/8189/8080，减少暴露面。
+- 平时若只要 RTSP（VLC/ffplay）看，可不放行 8889/8189/8080，减少暴露面（注意 SRT 的 VLC 客户端不可用）。
 - 尽量保持防火墙放行规则带 `remoteip` 限定在局域网网段。
 
 ---
@@ -365,14 +370,17 @@ netsh advfirewall firewall show rule name=all | findstr /i "LAN- MTX- WebRTC- Pl
 
 | 手段 | 位置 | 效果 |
 |------|------|------|
-| VLC **网络缓存降到 200ms** | 播放端 | 降幅最大（VLC 默认 1~2s） |
+| **ffplay 低延迟参数**（`-fflags nobuffer -flags low_delay -probesize 32 -analyzeduration 0 -framedrop -rtsp_transport tcp`） | 播放端 | 比 VLC 延迟低不少；推荐用它测（见"本机/其他电脑拉流"） |
+| VLC **网络缓存降到 200ms** | 播放端 | 若坚持用 VLC：默认 1~2s → 200ms |
+| `-g 30`（关键帧 1 秒一个） | 编码端 | 起播/续帧更快（需重启服务器生效） |
 | `writeQueueSize 128` | 服务器端 | 裁掉读端写队列最坏情况缓冲 |
 | `-preset ultrafast -tune zerolatency` | 编码端 | 实时编码 |
 | `-rtbufsize 64M` | 编码端 | 防丢帧（保留，去掉会重新掉帧） |
 
 VLC 改缓冲方法：工具 → 偏好设置 → 显示设置切**全部** → 输入/编解码器 → **网络缓存**填 `200`。
 
-> RTSP 本身不是低延迟协议，局域网下稳定约 300~500ms 属正常。要更低需改用 WebRTC / SRT。
+> RTSP 本身不是低延迟协议，局域网下稳定、带轻微延迟（约 300~500ms）属正常，已比 SRT 快。
+> 要更低延迟用 WebRTC（~100ms）。**SRT 有 ~500ms 重传窗口下限，局域网里反而比 RTSP 慢**，仅适合跨公网/丢包链路。
 
 ---
 
@@ -383,6 +391,7 @@ VLC 改缓冲方法：工具 → 偏好设置 → 显示设置切**全部** → 
 | 其他电脑连不上 | ① 两机同局域网？`ping <服务器IP>` ② 防火墙 8554 端口放行了？③ 服务器进程活着？`tasklist /fi "imagename eq mediamtx.exe"` |
 | 本机能连、他机不能 | 基本是防火墙，或他机用了 `localhost`（`localhost` 只指本机，他机要填服务器局域网 IP） |
 | 镜像画面 | 这是预览镜像，RTSP 流本身正常 |
+| SRT 用 VLC 播一帧卡死/周期性卡顿 | 属 VLC 的 SRT 实现缺陷，非服务器问题；改用 ffplay/MPV（见"多种拉流方式"SRT 段） |
 | 有画面但卡顿/丢帧 | 1080p 编码吃 CPU；可把命令里 `-vf scale=1280:720` 降到 720p 更稳 |
 | `dshow 缓冲 full` 警告 | 已用 `-rtbufsize 64M` 缓解；持续出现考虑降分辨率 |
 | WebRTC 报 "Failed to fetch" | 别用 `file://` 双击打开 `player.html`（Origin 为 null 被 CORS 拦）；改用 `http://<服务器IP>:8080/player.html` 打开 |

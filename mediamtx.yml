@@ -887,7 +887,7 @@ paths:
   # 摄像头自动推流：只启动 MediaMTX，就会自动用 FFmpeg 把本机摄像头
   # 采集成 H.264 推到 rtsp://<本机IP>:8554/live 供其他电脑拉流。
   live:
-    runOnInit: ffmpeg -f dshow -rtbufsize 64M -i video="Integrated Camera" -pix_fmt yuv420p -profile:v baseline -c:v libx264 -preset ultrafast -tune zerolatency -f rtsp rtsp://localhost:8554/live
+    runOnInit: ffmpeg -f dshow -rtbufsize 64M -i video="Integrated Camera" -pix_fmt yuv420p -profile:v baseline -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -f rtsp rtsp://localhost:8554/live
     runOnInitRestart: yes
 
   # Settings under path "all_others" are applied to all paths that
