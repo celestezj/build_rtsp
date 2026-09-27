@@ -1,6 +1,6 @@
 @echo off
-echo 停止 MediaMTX 进程...
+echo Stopping MediaMTX server...
 taskkill /IM mediamtx.exe /F
 taskkill /IM ffmpeg.exe /F
-echo 已停止。
+echo Stopped.
 pause
