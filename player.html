@@ -18,20 +18,26 @@
 <body>
 <h3>WebRTC 实时摄像头（低延迟）</h3>
 <div class="bar">
-  <input id="url" value="http://192.168.0.103:8889/live/whep">
+  <input id="url" placeholder="http://SERVER-IP:8889/live/whep">
   <button id="play">▶ 播放</button>
   <button id="stop" class="stop">■ 停止</button>
 </div>
 <p id="status">未连接</p>
 <video id="video" autoplay muted playsinline></video>
 <p class="tip">
-  上方的 WHEP 地址是 MediaMTX 的 WebRTC 端点。IP 变了就改 `192.168.0.103` 为新的服务器 IP。<br>
+  WHEP 地址会自动根据你打开本页的服务器 IP 生成，无需手动改。<br>
   <b>重要：不要在浏览器里双击/直接打开这个文件（file:// 会因 CORS 失败连不上）。</b><br>
-  正确做法：在另一台电脑的浏览器打开 <b>http://192.168.0.103:8080/player.html</b>（Mediamtx 服务器的
+  正确做法：在另一台电脑的浏览器打开 <b>http://服务器IP:8080/player.html</b>（Mediamtx 服务器的
   start_web_player.bat 提供了这个页面）。首次连接需 1~2 秒。
 </p>
 <script>
 const urlInput = document.getElementById('url');
+// 自动识别服务器 IP：本页由服务器(8080)提供，读回它自己的主机名
+// 拼出 WHEP 地址。仅当确实是 http(s) 提供时有效(file:// 时 hostname 为空)。
+{
+  const host = window.location.hostname;
+  if (host) urlInput.value = location.protocol + '//' + host + ':8889/live/whep';
+}
 const video = document.getElementById('video');
 const status = document.getElementById('status');
 let pc = null;

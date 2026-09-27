@@ -195,7 +195,9 @@ srt://192.168.0.103:8890?mode=caller&streamid=read:live&latency=120000
 - `streamid=read:live`：告诉服务器"我来读 `live` 这条流"
 - `latency=120000`：SRT 延迟设为 120ms（默认较大）。局域网可再调小，越大越抗网络抖动、越多延迟
 
-也可直接双击本目录 `play_srt.bat`（会自动带好参数打开 VLC；IP 变了要改脚本里的地址）。
+也可用本目录的 **`play_srt.bat`** 一键打开 VLC：
+- 直接双击 → 用默认 IP `192.168.0.103`
+- 传 IP 参数 → `play_srt.bat 192.168.1.50`（服务器 IP 变了就用这个，不用改脚本）
 
 ### WebRTC（浏览器播放，延迟最低）
 VLC 不支持 WebRTC，需用浏览器。**不要用 file:// 直接双击打开 player.html**（CORS 会拦截导致连不上），而是用 HTTP 方式访问（需要 node 环境，本机已具备）：
@@ -205,7 +207,7 @@ VLC 不支持 WebRTC，需用浏览器。**不要用 file:// 直接双击打开 
    ```
    http://192.168.0.103:8080/player.html
    ```
-3. 页面里默认 WHEP 地址 `http://192.168.0.103:8889/live/whep`，IP 变了改一下再点播放。首次出画面需 1~2 秒。
+3. 页面会**自动按你访问的服务器 IP 生成 WHEP 地址**，无需手动改；点播放即可，首次出画面需 1~2 秒。若自动生成的地址不对，也可手动改输入框。
 
 > **为何不能 file:// 打开**：浏览器用 `file://` 打开时请求来源是 `null`，需服务器的
 > `apiAllowOrigins` 放行，而 MediaMTX 对 `null` 来源不回发 CORS 头，浏览器会报
