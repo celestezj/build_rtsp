@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebRTC 摄像头实时播放</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; background:#111; color:#eee; }
+  .bar { display:flex; gap:.5rem; align-items:center; margin-bottom:1rem; flex-wrap:wrap; }
+  input { width: 400px; padding:.45rem; border-radius:6px; border:1px solid #555; background:#222; color:#eee; }
+  button { padding:.5rem 1rem; border-radius:6px; border:none; cursor:pointer; background:#2d7df0; color:#fff; }
+  button.stop { background:#c0392b; }
+  video { background:#000; border-radius:8px; width:100%; max-width:800px; }
+  #status { font-size:.9rem; color:#9ce; min-height:1.2em; }
+  .tip { font-size:.8rem; color:#888; max-width:800px; line-height:1.6; }
+</style>
+</head>
+<body>
+<h3>WebRTC 实时摄像头（低延迟）</h3>
+<div class="bar">
+  <input id="url" value="http://192.168.0.103:8889/live/whep">
+  <button id="play">▶ 播放</button>
+  <button id="stop" class="stop">■ 停止</button>
+</div>
+<p id="status">未连接</p>
+<video id="video" autoplay muted playsinline></video>
+<p class="tip">
+  上方的 WHEP 地址是 MediaMTX 的 WebRTC 端点。IP 变了就改 `192.168.0.103` 为新的服务器 IP。<br>
+  直接把本文件发给任意电脑，用浏览器打开即可观看（无需安装任何软件）。首次连接需 1~2 秒。
+</p>
+<script>
+const urlInput = document.getElementById('url');
+const video = document.getElementById('video');
+const status = document.getElementById('status');
+let pc = null;
+
+function setStatus(t) { status.textContent = t; }
+
+async function play() {
+  stop();
+  setStatus('连接中...');
+  const target = urlInput.value.trim();
+  if (!target) { setStatus('请填写 WHEP 地址'); return; }
+
+  const _pc = new RTCPeerConnection();
+  pc = _pc;
+
+  _pc.addEventListener('connectionstatechange', () => {
+    const s = _pc.connectionState;
+    setStatus('连接状态: ' + s);
+  });
+  _pc.ontrack = (ev) => {
+    if (ev.streams && ev.streams[0]) video.srcObject = ev.streams[0];
+    setStatus('已连接，正在播放');
+  };
+  _pc.addTransceiver('video', { direction: 'recvonly' });
+
+  try {
+    const offer = await _pc.createOffer();
+    await _pc.setLocalDescription(offer);
+
+    const resp = await fetch(target, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/sdp', 'Accept': 'application/sdp' },
+      body: offer.sdp,
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status + ': ' + (await resp.text()).slice(0, 120));
+    const answerSdp = await resp.text();
+    await _pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+    setStatus('已协商，接收媒体流...');
+  } catch (e) {
+    setStatus('失败: ' + e.message);
+    _pc.close(); pc = null;
+  }
+}
+
+function stop() {
+  if (pc) { pc.close(); pc = null; }
+  video.srcObject = null;
+  setStatus('已停止');
+}
+
+document.getElementById('play').onclick = play;
+document.getElementById('stop').onclick = stop;
+</script>
+</body>
+</html>
