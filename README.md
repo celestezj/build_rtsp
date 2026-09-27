@@ -298,7 +298,41 @@ netsh advfirewall firewall show rule name="LAN-WebRTC-SIG-8889"
 - `firewall_lan_open.bat` —— 放行局域网网段（默认 `192.168.0.0/24`，网段不同就改文件顶部 `SUBNET`）
 - `firewall_lan_close.bat` —— 精确删除上面那 5 条 `LAN-*` 规则，不影响其他规则
 
-### 4.4 进一步加固（可选）
+### 4.4 迁移：清理旧的"整网段"规则，统一改用脚本
+
+早期文档给过一套**不带 `remoteip` 的整网段放行规则**（`MTX-RTSP-8554`、`MTX-SRT-8890`、`MTX-WebRTC-8889`、`MTX-WebRTC-8189`、`WebRTC-Player-HTTP-8080`）。它们对**所有来源**开放，暴露面比局域网限定更大。建议清掉后统一用脚本管理。
+
+**① 先看有哪些旧规则**（管理员运行）：
+```cmd
+netsh advfirewall firewall show rule name=all | findstr /i "MTX- WebRTC- Player- LAN-"
+```
+
+**② 确认后，按名删除旧的整网段规则**（`delete rule name=...` 只删指定这条）：
+```cmd
+netsh advfirewall firewall delete rule name="MTX-RTSP-8554"
+netsh advfirewall firewall delete rule name="MTX-SRT-8890"
+netsh advfirewall firewall delete rule name="MTX-WebRTC-8889"
+netsh advfirewall firewall delete rule name="MTX-WebRTC-8189"
+netsh advfirewall firewall delete rule name="WebRTC-Player-HTTP-8080"
+```
+
+> 若之前还按更早的示例建过 `WebRTC-IN-LAN` / `WebRTC-UDP-LAN`，也一并删掉：
+> ```cmd
+> netsh advfirewall firewall delete rule name="WebRTC-IN-LAN"
+> netsh advfirewall firewall delete rule name="WebRTC-UDP-LAN"
+> ```
+
+**③ 用脚本重建局域网限定规则**：
+```cmd
+双击 firewall_lan_open.bat
+```
+
+**④ 核对最终状态**——应看到 `LAN-*` 五条，且不再有 `MTX-*` / `WebRTC-Player-HTTP-8080`：
+```cmd
+netsh advfirewall firewall show rule name=all | findstr /i "LAN- MTX- WebRTC- Player-"
+```
+
+### 4.5 进一步加固（可选）
 
 - 若需**从公网**访问：先给 MediaMTX 配置路径鉴权（`paths.live.readUser/readPass`），再考虑端口转发，否则不要暴露公网。
 - 平时若只用 VLC（RTSP/SRT），可不放行 8889/8189/8080，减少暴露面。
