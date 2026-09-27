@@ -125,6 +125,12 @@ mediamtx.exe
 ```
 看到 `[RTSP] listener opened on :8554` 和 `[path live] stream is available and online` 即为成功。
 
+> **关于证书 auto.crt / auto.key（无需你处理）**：
+> - MediaMTX 首次运行会自动生成一对**自签名 TLS 证书**，用于它的加密传输协议（如 MoQ，以及未开启的 HTTPS / `rtsps://`）。
+> - 本项目用的是**明文 RTSP**（`rtsp://`，`rtspEncryption: "no"`），**摄像头推流不依赖证书**。
+> - `auto.key` 是**私钥**，须保密，已在 `.gitignore` 中排除，不入库。
+> - **换新设备无需手动拷贝**：检测到证书缺失时会自动重新生成。
+
 ### 7. 获取本机局域网 IP
 
 ```cmd
