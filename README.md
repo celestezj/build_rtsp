@@ -42,6 +42,8 @@ build_rtsp/
 ├── serve.js           # 极简静态文件服务器(零依赖)
 ├── player.html        # WebRTC 浏览器播放器(经 http://IP:8080/player.html 访问)
 ├── play_srt.bat       # SRT 低延迟播放（另台电脑的 VLC 用）
+├── firewall_lan_open.bat  # 一键放行局域网网段的全部端口(自动提权)
+├── firewall_lan_close.bat # 一键精确删除上述规则(按规则名,安全)
 ├── LICENSE
 └── .gitignore
 ```
@@ -291,6 +293,10 @@ netsh advfirewall firewall show rule name="LAN-WebRTC-SIG-8889"
 ```
 
 > 精确安全删除的要点：**用 `delete rule name="..."` 且名字必须与放行时完全一致**（含引号、大小写），它只删这一条，绝不动别的。若想整网段一次性清空某端口的所有规则，退回用 `delete rule name=all protocol=TCP localport=8889`——但那种会连该端口上其他用途的规则一起删，非必要别用。
+
+**一键化（推荐）**：以上"放行/删除"已封装成两个脚本，双击即用（会自动请求管理员权限，端口清单与本页一致）：
+- `firewall_lan_open.bat` —— 放行局域网网段（默认 `192.168.0.0/24`，网段不同就改文件顶部 `SUBNET`）
+- `firewall_lan_close.bat` —— 精确删除上面那 5 条 `LAN-*` 规则，不影响其他规则
 
 ### 4.4 进一步加固（可选）
 
