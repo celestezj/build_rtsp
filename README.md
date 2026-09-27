@@ -5,14 +5,17 @@
 ## 架构原理
 
 ```
-摄像头 ──①采集+编码──► MediaMTX(RTSP服务器) ──②广播──► 任意拉流端(VLC/ffplay)
-        FFmpeg(dshow)      :8554/live          RTSP
+摄像头 ──①采集+编码────► MediaMTX(服务器) ──②多协议广播──► 任意拉流端
+        FFmpeg(dshow)      同一份流,对外同时开放：       VLC / ffplay / 浏览器
+                          ├─ RTSP   :8554/live
+                          ├─ SRT    :8890 (streamid=read:live)
+                          └─ WebRTC :8889 (WHEP)
 ```
 
-- **FFmpeg**：采集摄像头 → H.264 编码 → 推流给服务器
-- **媒体服务器 (MediaMTX)**：接收并向外广播，对访问者提供标准 RTSP 地址
+- **FFmpeg**：采集摄像头 → H.264 编码 → 推流给服务器（只推一次）
+- **媒体服务器 (MediaMTX)**：接收后，把**同一份流**同时以 RTSP / SRT / WebRTC 三种协议对外广播，谁想用哪种连哪种
 
-职责分离的好处：服务器只看一种流格式，换采集源（摄像头/屏幕/文件）无需改服务器。
+职责分离的好处：服务器只看一种流格式，换采集源（摄像头/屏幕/文件）无需改服务器；客户端多协议按需选择。
 
 ---
 
@@ -189,11 +192,81 @@ VLC 不支持 WebRTC，需用浏览器。**不要用 file:// 直接双击打开 
 
 > 浏览器要求 H.264 流为 **4:2:0 采样 + Baseline 基线**（浏览器解码器不支持 4:2:2 / High profile），已在推流命令里用 `-pix_fmt yuv420p -profile:v baseline` 强制处理，三协议通用。
 
-> 浏览器要求 H.264 流为 **4:2:0 采样 + Baseline 基线**（浏览器解码器不支持 4:2:2 / High profile），已在推流命令里用 `-pix_fmt yuv420p -profile:v baseline` 强制处理，三协议通用。
+---
+
+## 四、端口一览与安全
+
+### 4.1 端口清单
+
+服务器监听多个端口，每个对应一种对外能力：
+
+| 端口 | 协议 | 用途 | 内容是否加密 |
+|------|------|------|:---:|
+| **8554** | TCP | RTSP 流（VLC/ffplay 拉流） | 明文 |
+| **8000 / 8001** | UDP | RTSP 的 RTP/RTCP 媒体（一般用不到，走 8554 TCP 为主） | 明文 |
+| **8890** | UDP | SRT 流（VLC 低延迟拉流） | SRT 可加密，默认 off |
+| **8889** | TCP | WebRTC **信令**（WHEP 协商，只交换参数） | 明文参数 |
+| **8080** | TCP | 静态播放页 `player.html`（node serve.js） | 明文 |
+| 8892/8893 | TCP/UDP | MoQ 协议（本项目未用） | — |
+
+### 4.2 安全性怎么评
+
+分两件事看，结论不一样：
+
+- **内容加密**：WebRTC（8189 媒体）走 **DTLS/SRTP 强加密**，抓包看到的是密文；而 **RTSP（8554）是明文裸流**，抓包直接能看视频。所以**论"画面不被旁路偷看"，WebRTC 反而比 RTSP 更安全**。
+- **访问控制**：本项目**没有账号密码**，`apiAllowOrigins: ["*"]` 意味着**任何能连到端口的人都能看摄像头**。这一点 RTSP / SRT / WebRTC 全都一样。
+
+**核心风险是"暴露范围"**：`192.168.0.x` 是私有地址，正常情况下**只在局域网内可见**，风险 = "局域网内的人能看你的摄像头"。但一旦这台机器被**端口转发 / DMZ / 公网 IP** 暴露出去，以上所有端口都会变成**无鉴权的公网摄像头**，必须警惕。
+
+### 4.3 防火墙：放行与关闭命令（管理员运行）
+
+`netsh` 修改防火墙需**以管理员身份**运行命令提示符。
+
+**查询某规则是否存在：**
+```cmd
+netsh advfirewall firewall show rule name="WebRTC-Player-HTTP-8080"
+```
+
+**放行（按需，也可只放行你要用的协议）：**
+```cmd
+REM RTSP
+netsh advfirewall firewall add rule name="MTX-RTSP-8554"    dir=in action=allow protocol=TCP localport=8554 enable=yes
+REM SRT
+netsh advfirewall firewall add rule name="MTX-SRT-8890"     dir=in action=allow protocol=UDP localport=8890 enable=yes
+REM WebRTC 信令 + 媒体
+netsh advfirewall firewall add rule name="MTX-WebRTC-8889"  dir=in action=allow protocol=TCP localport=8889 enable=yes
+netsh advfirewall firewall add rule name="MTX-WebRTC-8189"  dir=in action=allow protocol=UDP localport=8189 enable=yes
+REM WebRTC 静态播放页
+netsh advfirewall firewall add rule name="WebRTC-Player-HTTP-8080" dir=in action=allow protocol=TCP localport=8080 enable=yes
+```
+
+**关闭（删除）——与放行一一对应，改 `add` 为 `delete rule name=all protocol=... localport=...`：**
+```cmd
+netsh advfirewall firewall delete rule name=all protocol=TCP localport=8554
+netsh advfirewall firewall delete rule name=all protocol=UDP localport=8890
+netsh advfirewall firewall delete rule name=all protocol=TCP localport=8889
+netsh advfirewall firewall delete rule name=all protocol=UDP localport=8189
+netsh advfirewall firewall delete rule name=all protocol=TCP localport=8080
+```
+
+> `delete rule name=` 要求名称完全一致；`delete rule name=all protocol=... localport=...` 则按端口兜底删除。
+> 删除是永久的；正在连接的会话不受影响，仅新连接被拦。
+
+**更稳的做法——只对局域网网段开放**（例，仅 `192.168.0.x` 可访问）：
+```cmd
+netsh advfirewall firewall add rule name="WebRTC-IN-LAN" dir=in action=allow protocol=TCP localport=8889 remoteip=192.168.0.0/24 enable=yes
+netsh advfirewall firewall add rule name="WebRTC-UDP-LAN" dir=in action=allow protocol=UDP localport=8189 remoteip=192.168.0.0/24 enable=yes
+```
+
+### 4.4 进一步加固（可选）
+
+- 若需**从公网**访问：先给 MediaMTX 配置路径鉴权（`paths.live.readUser/readPass`），再考虑端口转发，否则不要暴露公网。
+- 平时若只用 VLC（RTSP/SRT），可不放行 8889/8189/8080，减少暴露面。
+- 尽量保持防火墙放行规则带 `remoteip` 限定在局域网网段。
 
 ---
 
-## 四、延迟优化（本次已应用）
+## 五、延迟优化（本次已应用）
 
 | 手段 | 位置 | 效果 |
 |------|------|------|
@@ -208,7 +281,7 @@ VLC 改缓冲方法：工具 → 偏好设置 → 显示设置切**全部** → 
 
 ---
 
-## 五、故障排查
+## 六、故障排查
 
 | 现象 | 排查 |
 |------|------|
@@ -217,12 +290,20 @@ VLC 改缓冲方法：工具 → 偏好设置 → 显示设置切**全部** → 
 | 镜像画面 | 这是预览镜像，RTSP 流本身正常 |
 | 有画面但卡顿/丢帧 | 1080p 编码吃 CPU；可把命令里 `-vf scale=1280:720` 降到 720p 更稳 |
 | `dshow 缓冲 full` 警告 | 已用 `-rtbufsize 64M` 缓解；持续出现考虑降分辨率 |
+| WebRTC 报 "Failed to fetch" | 别用 `file://` 双击打开 `player.html`（Origin 为 null 被 CORS 拦）；改用 `http://<服务器IP>:8080/player.html` 打开 |
+| 自测能连、跨机连不上 | 本机用 `localhost` 测只能证明服务在跑；跨机要填**服务器局域网 IP**，且确认服务器防火墙已放行对应端口 |
+| 机器能上外网但局域网互访失败 | 多半是 Windows 把网络识别成了**公用(Public)**，会拦截入站 RDP/局域网访问。设置→网络→把网络配置文件从"公用"切回"专用" |
+| `409/400/405` 类似报错 | WHEP 端点 `:8889/live/whep` 只接受 **POST**（带 SDP）；浏览器地址栏直接打开发 GET 会报 method not allowed，属正常 |
 
 ---
 
-## 六、版本记录
+## 七、版本记录
 
 ```
+c7a6024 fix: 修复 WebRTC 跨机 Failed to fetch (CORS + 静态服务)
+e93acfc feat: 新增 SRT 与 WebRTC 低延迟拉流
+46383f4 docs: 补充证书 auto.crt/auto.key 说明
+0d83fde docs: 新增完整 README
 a4f9ee6 tune: 降低 MediaMTX 写队列以缩减局域网延迟
 4b73b43 feat: 建立局域网 RTSP 摄像头推流服务器
 ```
