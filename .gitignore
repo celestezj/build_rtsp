@@ -1,0 +1,12 @@
+# 运行时产物
+server.log
+
+# MediaMTX 自动生成的证书（含私钥，不入库）
+auto.crt
+auto.key
+
+# 二进制：可从官网重新下载 mediamtx.exe
+mediamtx.exe
+
+# Claude 会话数据
+.claude/
